@@ -1,47 +1,31 @@
-const WebSocket = require('ws');
+const express = require('express');
+const app = express();
+app.use(express.json());
+const cors = require('cors');
+app.use(cors());  // Enable CORS for all routes
 const https = require('https');
 const fs = require('fs');
 const process = require('process');
-const wss = new WebSocket.Server({port:52022});
-var isBusy = false;
-var isConnected = false;
+const readline = require('readline'); // ← 추가
 
-console.log("KHU LearningX Lecture Downloader");
-console.log("크롬 확장프로그램을 통해 선택된 강의 영상을 다운로드 합니다")
-console.log("한번에 하나의 강의만 다운로드 가능합니다\n")
+const PORT = 52022;
+app.listen(PORT, () => console.log(`Backend downloader listening at http://localhost:${PORT}/download`));
 
-var cnt = 0;
-function animatedWait() {
-    
-    if (!isConnected) {
-        if (cnt-- <= 0) {
-            process.stdout.clearLine();
-            process.stdout.write('\r크롬 확장프로그램이 작동할 때까지 대기중');
-            cnt = cnt + 5;
-        }
-        else
-        {
-            process.stdout.write('.')
-        }
-        setTimeout(animatedWait,1000);
-    }
-}
+let isBusy = false;
 
-wss.once('listening', () => {
-    animatedWait();
-});
+console.log("KHU LearningX Lecture Downloader (HTTP mode)");
+console.log("Awaiting download requests via HTTP POST at /download\n");
 
-wss.on('connection', ws => {
-    isConnected = true;
-    console.log('\r확장프로그램 작동 확인! 브라우저에서 확장프로그램을 통해 강의를 선택하세요')
-    ws.on('message', msg => {
-        if (isBusy) {
-            console.log("\r진행중인 다운로드가 종료될 때까지 기다려주세요")
-            return;
-        }
-        var data = JSON.parse(msg.toString());
-        send(data.url, data.filename, data.host)
-    })
+app.post('/download', (req, res) => {
+  if (isBusy) {
+    return res.status(503).json({ error: 'Another download in progress' });
+  }
+  const { url, filename, host } = req.body;
+  if (!url || !filename || !host) {
+    return res.status(400).json({ error: 'Missing url, filename, or host parameter' });
+  }
+  res.json({ status: 'queued' });
+  send(url, filename, host);
 });
 
 function send(url, name, host) {
